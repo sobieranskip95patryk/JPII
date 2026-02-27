@@ -15,16 +15,23 @@ function addMessage(text, sender) {
 
 async function sendMessage(userMessage) {
   try {
+    console.log("Wysyłane dane:", { message: userMessage });
     const response = await fetch(WORKER_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ message: userMessage }),
     });
 
+    if (!response.ok) {
+      throw new Error(`Błąd serwera: ${response.status} ${response.statusText}`);
+    }
+
     const data = await response.json();
+    console.log("Otrzymana odpowiedź:", data);
     return data.candidates?.[0]?.content?.parts?.[0]?.text || "Brak odpowiedzi od AI.";
   } catch (err) {
-    return "Błąd połączenia z serwerem.";
+    console.error("Błąd:", err);
+    return "Błąd połączenia z serwerem lub nieprawidłowa odpowiedź.";
   }
 }
 
