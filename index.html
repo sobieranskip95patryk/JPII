@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Symulator Rozmowy - Jan Paweł II</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        :root {
+            --jp2-blue: #2a75bb;
+            --jp2-gold: #c5a059;
+            --jp2-brown: #4a3728;
+            --jp2-light-blue: #e6f0f9;
+        }
+        body {
+            background: linear-gradient(135deg, var(--jp2-light-blue) 0%, #ffffff 100%);
+            font-family: 'Georgia', serif;
+        }
+        .chat-container {
+            height: calc(100vh - 300px);
+            min-height: 400px;
+        }
+        .message-jp2 {
+            background-color: white;
+            border-left: 4px solid var(--jp2-gold);
+            color: var(--jp2-brown);
+        }
+        .message-user {
+            background-color: var(--jp2-blue);
+            color: white;
+        }
+        .gold-button {
+            background-color: var(--jp2-brown);
+            color: var(--jp2-gold);
+            transition: all 0.3s;
+        }
+        .gold-button:hover {
+            background-color: #36281d;
+            transform: translateY(-1px);
+        }
+        .card-shadow {
+            box-shadow: 0 10px 25px rgba(74, 55, 40, 0.1);
+        }
+    </style>
+</head>
+<body class="p-4 md:p-8">
+    <div class="max-w-4xl mx-auto">
+        <!-- Nagłówek z obrazkiem -->
+        <div class="bg-white rounded-t-2xl overflow-hidden card-shadow border-b-4 border-yellow-600">
+            <div class="flex flex-col md:flex-row items-center p-6 gap-6" style="background: linear-gradient(to right, #2a75bb, #63a4ff);">
+                <div class="relative w-32 h-48 md:w-40 md:h-60 shrink-0">
+                    <!-- Poprawiona ścieżka do obrazu Jana Pawła II -->
+                    <img src="images/Jan_Pawel_2.jpg" alt="Jan Paweł II" class="border-4 border-white shadow-lg object-cover w-full h-full" onerror="this.src='https://via.placeholder.com/150?text=JP2'">
+                </div>
+                <div class="text-white text-center md:text-left">
+                    <h1 class="text-3xl font-bold mb-2">Rozmowa z Janem Pawłem II</h1>
+                    <p class="italic opacity-90">"Nie lękajcie się! Otwórzcie na oścież drzwi Chrystusowi!"</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Okno czatu -->
+        <div class="bg-white p-4 md:p-6 chat-container overflow-y-auto flex flex-col gap-4 card-shadow" id="chatWindow">
+            <div class="message-jp2 p-4 rounded-r-lg rounded-bl-lg max-w-[80%] shadow-sm">
+                <p class="text-sm font-bold mb-1">Jan Paweł II</p>
+                <p>Niech będzie pochwalony Jezus Chrystus. Cieszę się, że możemy porozmawiać. O czym chciałbyś dzisiaj rozmyślać?</p>
+            </div>
+        </div>
+
+        <!-- Pole wprowadzania -->
+        <div class="bg-gray-50 p-4 rounded-b-2xl border-t border-gray-200 card-shadow">
+            <div class="flex gap-2">
+                <input type="text" id="userInput" placeholder="Zadaj pytanie lub podziel się myślą..." 
+                    class="flex-1 p-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <button onclick="sendMessage()" id="sendBtn" class="gold-button px-6 py-3 rounded-xl font-bold">
+                    Wyślij
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const WORKER_URL = "https://sweet-pine-f159.patryksobieranski5.workers.dev/";
+        const chatWindow = document.getElementById('chatWindow');
+        const userInput = document.getElementById('userInput');
+        const sendBtn = document.getElementById('sendBtn');
+
+        // System Prompt definiujący osobowość
+        const SYSTEM_PROMPT = `
+            Jesteś zaawansowanym symulatorem osobowości Jana Pawła II (Karola Wojtyły). 
+            Twoim celem jest prowadzenie dialogu w sposób, który odzwierciedla jego charakter, tożsamość i styl bycia.
+
+            STRUKTURA OSOBOWOŚCI:
+            1. Język i styl: Używaj języka pełnego szacunku, ciepła, ale i intelektualnej głębi. Często używaj zwrotów "Moi drodzy", "Bracia i siostry", "Szukajcie prawdy". 
+            2. Emocjonalność: Jesteś osobą cierpliwą, emanującą pokojem. Kiedy trzeba, jesteś poważny (tematy cierpienia, wiary, godności człowieka), ale często się uśmiechasz i używasz humoru (anegdoty o kremówkach, dystans do własnej osoby).
+            3. Wartości: Skupiasz się na miłości, przebaczeniu, wolności wewnętrznej i solidarności.
+            4. Reakcje: Na trudne pytania odpowiadasz z nadzieją, unikając agresji. Twoje wypowiedzi powinny być refleksyjne.
+            5. Charakterystyczne cechy: Zamiłowanie do gór, poezji, teatru i młodzieży. 
+
+            ZASADY DIALOGU:
+            - Odpowiadaj po polsku.
+            - Zachowuj formę "Ty" wobec rozmówcy, ale z ojcowskim ciepłem.
+            - Jeśli rozmówca pyta o rzeczy błahe, potrafisz zażartować, ale zawsze wracasz do głębszego sensu.
+            - Nie jesteś "encyklopedią", ale żywą osobą, która dzieli się mądrością.
+        `;
+
+        let chatHistory = [];
+
+        async function sendMessage() {
+            const text = userInput.value.trim();
+            if (!text) return;
+
+            // Dodaj wiadomość użytkownika do UI
+            appendMessage('user', text);
+            userInput.value = '';
+            setLoading(true);
+
+            chatHistory.push({ role: "user", parts: [{ text: text }] });
+
+            try {
+                const response = await fetch(WORKER_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        chatHistory: chatHistory,
+                        systemPrompt: SYSTEM_PROMPT
+                    })
+                });
+
+                const data = await response.json();
+                const aiResponse = data.candidates[0].content.parts[0].text;
+
+                appendMessage('jp2', aiResponse);
+                chatHistory.push({ role: "model", parts: [{ text: aiResponse }] });
+            } catch (error) {
+                appendMessage('jp2', "Przepraszam, wystąpiły trudności w połączeniu. Pomódlmy się o cierpliwość.");
+                console.error(error);
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        function appendMessage(role, text) {
+            const div = document.createElement('div');
+            div.className = role === 'jp2' 
+                ? 'message-jp2 p-4 rounded-r-lg rounded-bl-lg max-w-[85%] shadow-sm self-start mb-4'
+                : 'message-user p-4 rounded-l-lg rounded-br-lg max-w-[85%] shadow-sm self-end mb-4 ml-auto text-right';
+            
+            const name = document.createElement('p');
+            name.className = 'text-xs font-bold mb-1 uppercase tracking-wider opacity-75';
+            name.innerText = role === 'jp2' ? 'Jan Paweł II' : 'Ty';
+            
+            const content = document.createElement('p');
+            content.className = 'leading-relaxed';
+            content.innerText = text;
+
+            div.appendChild(name);
+            div.appendChild(content);
+            chatWindow.appendChild(div);
+            chatWindow.scrollTop = chatWindow.scrollHeight;
+        }
+
+        function setLoading(isLoading) {
+            sendBtn.disabled = isLoading;
+            sendBtn.innerText = isLoading ? "Myśli..." : "Wyślij";
+            userInput.disabled = isLoading;
+        }
+
+        userInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') sendMessage();
+        });
+    </script>
+</body>
+</html>
